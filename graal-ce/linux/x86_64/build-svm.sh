@@ -15,8 +15,9 @@
 
 set -e
 
-NAME="foobar-vm"
-FINAL_NAME="foobar-vm.tar.gz"
+VENDOR_NAME="${VENDOR_NAME:-"GraalVM LIBGRAAL"}"
+NAME="svm"
+FINAL_NAME="svm.tar.gz"
 
 prepare() {
   if [ "${OPENJDK_GRAAL_BUILDER}_" == "_" ]; then
@@ -41,10 +42,13 @@ prepare() {
   rm -rf substratevm/testme-helloworld
   pushd substratevm > /dev/null
     $MX clean
-  popd
+  popd > /dev/null
 }
 
 build() {
+  # Adjust Vendor Version
+  echo "Setting vendor version to: $VENDOR_NAME"
+  sed -i "s/__VENDOR_VERSION__/$VENDOR_NAME/g" sdk/mx.sdk/mx_sdk_vm_impl.py
   pushd substratevm > /dev/null
   cat > HelloWorld.java <<EOF
   public class HelloWorld {
