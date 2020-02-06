@@ -22,10 +22,12 @@ prepare() {
     exit 1
   fi
   MX="${MX_BIN} --java-home=${OPENJDK_GRAAL_BUILDER}"
-  "${MX}" --version 2>&1 | sed 's/^/BUILD MX: /g'
+  $MX --version 2>&1 | sed 's/^/BUILD MX: /g'
   rm -rf substratevm/svmbuild
   rm -rf substratevm/testme-helloworld
-  $MX clean
+  pushd substratevm > /dev/null
+    $MX clean
+  popd
 }
 
 build() {

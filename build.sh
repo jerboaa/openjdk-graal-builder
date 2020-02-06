@@ -57,23 +57,23 @@ RESULTS_BASE_DIR="$(pwd)/results"
 rm -rf "$(pwd)/results"
 OPENJDK_SRC="$(pwd)/src/openjdk"
 cloneOpenJDK "$OPENJDK_SRC"
-export RESULTS_DIR="$RESULTS_BASE_DIR/openjdk"
+export RESULT_DIR="$RESULTS_BASE_DIR/openjdk"
 export JDK_BOOT_DIR="$(pwd)/jdk-$BOOT_JDK_VERSION"
 buildOpenJDK "$(pwd)/openjdk/linux/x86_64/build-builder-jdk.sh"
 
-BUILDER_IMAGE="$(pwd)/$(ls $RESULTS_DIR/*.tar.gz)"
+BUILDER_IMAGE="$(ls $RESULT_DIR/*.tar.gz)"
 rm -rf $(pwd)/graal-builder
 mkdir -p $(pwd)/graal-builder
 pushd $(pwd)/graal-builder > /dev/null
   tar -xf $BUILDER_IMAGE
   OPENJDK_GRAAL_BUILDER="$(pwd)/$(ls -d *)"
-popd
+popd > /dev/null
 export OPENJDK_GRAAL_BUILDER
-export RESULTS_DIR="$RESULTS_BASE_DIR/substrate"
+export RESULT_DIR="$RESULTS_BASE_DIR/substrate"
 
 GRAAL_BASE="$(pwd)/src/graal"
 cloneGraalCE "$(pwd)/src/graal"
-MX_BIN="$GRAAL_BASE/mx/mx"
+export MX_BIN="$GRAAL_BASE/mx/mx"
 GRAAL_CE_SRC="$GRAAL_BASE/graal-ce"
 patchGraalCESources "$(pwd)/graal-ce/adopt-openjdk-patches"
 
