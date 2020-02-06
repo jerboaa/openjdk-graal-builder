@@ -1,0 +1,25 @@
+From 692500d33d58d99c68d7180ee3ef73c7d576f11e Mon Sep 17 00:00:00 2001
+From: Severin Gehwolf <sgehwolf@redhat.com>
+Date: Thu, 6 Feb 2020 11:39:52 +0100
+Subject: [PATCH 2/2] Change name in version output to 'foobar VM'
+
+---
+ sdk/mx.sdk/mx_sdk_vm_impl.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sdk/mx.sdk/mx_sdk_vm_impl.py b/sdk/mx.sdk/mx_sdk_vm_impl.py
+index adb7c35878d..b1fcd0d7a4a 100644
+--- a/sdk/mx.sdk/mx_sdk_vm_impl.py
++++ b/sdk/mx.sdk/mx_sdk_vm_impl.py
+@@ -2602,7 +2602,7 @@ def graalvm_vendor_version(graalvm_dist):
+     :type jdk_home: str
+     :rtype str:
+     """
+-    vendor_version = '{} {}'.format(graalvm_dist.base_name, graalvm_dist.vm_config_name.upper()) if graalvm_dist.vm_config_name else graalvm_dist.base_name
++    vendor_version = "foobar VM"
+     vendor_version += ' {}'.format(graalvm_version())
+     return vendor_version
+ 
+-- 
+2.21.1
+

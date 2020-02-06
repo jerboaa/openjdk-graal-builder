@@ -1,0 +1,40 @@
+From 22b00d7630fca7040add6676bb3924159640ef4a Mon Sep 17 00:00:00 2001
+From: Severin Gehwolf <sgehwolf@redhat.com>
+Date: Tue, 21 Jan 2020 18:36:16 +0100
+Subject: [PATCH 1/2] Account for JDK-8236925 changes
+
+8236925: (dc) Upgrade DatagramChannel socket adaptor to extend MulticastSocket
+---
+ .../oracle/svm/core/posixsubst/PosixJavaNetSubstitutions.java   | 2 +-
+ .../src/com/oracle/svm/hosted/jdk/JNIRegistrationJavaNet.java   | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/substratevm/src/com.oracle.svm.core.posixsubst/src/com/oracle/svm/core/posixsubst/PosixJavaNetSubstitutions.java b/substratevm/src/com.oracle.svm.core.posixsubst/src/com/oracle/svm/core/posixsubst/PosixJavaNetSubstitutions.java
+index d5bc0feba49..9b09abef27c 100644
+--- a/substratevm/src/com.oracle.svm.core.posixsubst/src/com/oracle/svm/core/posixsubst/PosixJavaNetSubstitutions.java
++++ b/substratevm/src/com.oracle.svm.core.posixsubst/src/com/oracle/svm/core/posixsubst/PosixJavaNetSubstitutions.java
+@@ -1548,7 +1548,7 @@ final class Target_java_net_PlainDatagramSocketImpl {
+ final class Target_java_net_DatagramSocket {
+ 
+     @Substitute
+-    private void checkOldImpl() {
++    private void checkOldImpl(java.net.DatagramSocketImpl impl) {
+         // it calls java.net.PlainDatagramSocketImpl.peekData(DatagramPacket) which is unimplemented
+     }
+ 
+diff --git a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/jdk/JNIRegistrationJavaNet.java b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/jdk/JNIRegistrationJavaNet.java
+index 7915eb31ad0..428a742e834 100644
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/jdk/JNIRegistrationJavaNet.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/jdk/JNIRegistrationJavaNet.java
+@@ -116,7 +116,7 @@ class JNIRegistrationJavaNet extends JNIRegistrationUtil implements Feature {
+                         method(a, "java.net.DatagramPacket", "init"));
+ 
+         a.registerReachabilityHandler(JNIRegistrationJavaNet::registerDatagramSocketCheckOldImpl,
+-                        method(a, "java.net.DatagramSocket", "checkOldImpl"));
++                        method(a, "java.net.DatagramSocket", "checkOldImpl", java.net.DatagramSocketImpl.class));
+ 
+         String plainDatagramSocketImpl = isWindows() ? "TwoStacksPlainDatagramSocketImpl" : "PlainDatagramSocketImpl";
+         a.registerReachabilityHandler(JNIRegistrationJavaNet::registerPlainDatagramSocketImplInit,
+-- 
+2.21.1
+
