@@ -91,6 +91,7 @@ export MX_BIN="$GRAAL_BASE/mx/mx"
 GRAAL_CE_SRC="$GRAAL_BASE/graal-ce"
 patchGraalCESources "$(pwd)/graal-ce/adopt-openjdk-patches"
 
+export VENDOR_NAME="GaoVM"
 buildSubstrate "$(pwd)/graal-ce/linux/x86_64/build-svm.sh"
 
 echo "Results in: "
