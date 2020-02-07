@@ -72,12 +72,42 @@ archive() {
   OUTPUT_BASE=$(basename $OUTPUT)
   pushd $OUTPUT_DIR > /dev/null
     mv $OUTPUT_BASE $NAME
-    tar -c -f $NAME.tar $NAME
+    tar -c -f $NAME.tar --dereference $NAME
     gzip $NAME.tar
-    if [ ! -e $RESULT_DIR ]; then
-      mkdir -p $RESULT_DIR
-    fi
-    mv $FINAL_NAME $RESULT_DIR/
+    orig_file=$(pwd)/$FINAL_NAME
+    # work around symlink-mess in distro
+    mkdir tmp-svm
+    pushd tmp-svm > /dev/null
+      tar -xf $orig_file
+      pushd $NAME/bin > /dev/null
+        rm native-image
+        ln -s ../lib/svm/bin/native-image native-image
+      popd > /dev/null
+      rm $orig_file
+      tar -c -f $NAME.tar $NAME
+      gzip $NAME.tar
+      if [ ! -e $RESULT_DIR ]; then
+        mkdir -p $RESULT_DIR
+      fi
+      mv $FINAL_NAME $RESULT_DIR/
+    popd > /dev/null
+    rm -rf tmp-svm
+    # Test native image functionality from archive
+    mkdir tmp-test-native
+    pushd tmp-test-native > /dev/null
+      tar -xf $RESULT_DIR/$FINAL_NAME
+      cat > HelloWorld.java <<EOF
+  public class HelloWorld {
+    public static void main(String[] args) {
+      System.out.println("Hello World!");
+    }
+  }
+EOF
+    ./$NAME/bin/javac HelloWorld.java
+    ./$NAME/bin/native-image HelloWorld foobar-hello
+    ./foobar-hello 2>&1 | sed 's/^/Native image (archive) >>>  /g'
+    popd > /dev/null
+    rm -rf tmp-test-native
   popd > /dev/null
   result=$(ls "$RESULT_DIR/$FINAL_NAME")
   echo "Native image capable JDK image at: $result"
