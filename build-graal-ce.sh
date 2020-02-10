@@ -44,7 +44,7 @@ buildSubstrate() {
 rm -rf "$(pwd)/src"
 RESULTS_BASE_DIR="$(pwd)/results"
 rm -rf "$RESULTS_BASE_DIR"
-BUILDER_IMAGE="${BUILDER_IMAGE:-$(ls build-jdk/*.tar.gz)}"
+BUILDER_IMAGE="${BUILDER_IMAGE:-$(ls $(pwd)/build-jdk/*.tar.gz)}"
 rm -rf $(pwd)/graal-builder
 mkdir -p $(pwd)/graal-builder
 pushd $(pwd)/graal-builder > /dev/null
