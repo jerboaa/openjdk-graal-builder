@@ -1,0 +1,501 @@
+From d7232755609381fc9ec983921ddd380043f2db7a Mon Sep 17 00:00:00 2001
+From: Severin Gehwolf <sgehwolf@redhat.com>
+Date: Fri, 27 Mar 2020 15:40:54 +0100
+Subject: [PATCH 1/2] Account for JDK-8228336 in graal master
+
+---
+ substratevm/mx.substratevm/suite.py           |  16 +
+ ...rget_jdk_internal_util_StaticProperty.java |  16 +
+ ...et_java_lang_ClassLoader_JDK15OrLater.java | 309 ++++++++++++++++++
+ .../svm/core/jdk/JavaLangSubstitutions.java   |   2 +-
+ .../svm/core/jdk/NativeLibrarySupport.java    |  18 +-
+ ...t_java_lang_AssertionStatusDirectives.java |   7 +
+ .../jdk/Target_java_lang_ClassLoader.java     |   8 +-
+ 7 files changed, 368 insertions(+), 8 deletions(-)
+ create mode 100644 substratevm/src/com.oracle.svm.core.jdk15/src/com/oracle/svm/core/jdk15/Target_java_lang_ClassLoader_JDK15OrLater.java
+ create mode 100644 substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_AssertionStatusDirectives.java
+
+diff --git a/substratevm/mx.substratevm/suite.py b/substratevm/mx.substratevm/suite.py
+index 06f93f72bfb..c6e4d52b953 100644
+--- a/substratevm/mx.substratevm/suite.py
++++ b/substratevm/mx.substratevm/suite.py
+@@ -214,6 +214,22 @@ suite = {
+             "workingSets": "SVM",
+         },
+ 
++        "com.oracle.svm.core.jdk15": {
++            "subDir": "src",
++            "sourceDirs": ["src"],
++            "dependencies": ["com.oracle.svm.core"],
++            "requiresConcealed" : {
++                "java.base" : [
++                    "jdk.internal.loader",
++                ],
++            },
++            "javaCompliance": "15+",
++            "overlayTarget" : "com.oracle.svm.core",
++            "multiReleaseJarVersion": "15",
++            "checkstyle": "com.oracle.svm.core",
++            "workingSets": "SVM",
++        },
++
+         "com.oracle.svm.core.genscavenge": {
+             "subDir": "src",
+             "sourceDirs": [
+diff --git a/substratevm/src/com.oracle.svm.core.jdk11/src/com/oracle/svm/core/jdk11/Target_jdk_internal_util_StaticProperty.java b/substratevm/src/com.oracle.svm.core.jdk11/src/com/oracle/svm/core/jdk11/Target_jdk_internal_util_StaticProperty.java
+index d604d09e98f..07a278900ef 100644
+--- a/substratevm/src/com.oracle.svm.core.jdk11/src/com/oracle/svm/core/jdk11/Target_jdk_internal_util_StaticProperty.java
++++ b/substratevm/src/com.oracle.svm.core.jdk11/src/com/oracle/svm/core/jdk11/Target_jdk_internal_util_StaticProperty.java
+@@ -28,7 +28,9 @@ import org.graalvm.nativeimage.ImageSingletons;
+ 
+ import com.oracle.svm.core.annotate.Substitute;
+ import com.oracle.svm.core.annotate.TargetClass;
++import com.oracle.svm.core.annotate.TargetElement;
+ import com.oracle.svm.core.jdk.JDK11OrLater;
++import com.oracle.svm.core.jdk.JDK15OrLater;
+ import com.oracle.svm.core.jdk.SystemPropertiesSupport;
+ 
+ /**
+@@ -42,6 +44,20 @@ import com.oracle.svm.core.jdk.SystemPropertiesSupport;
+ @SuppressWarnings("unused")
+ final class Target_jdk_internal_util_StaticProperty {
+ 
++    @Substitute
++    @TargetElement(onlyWith = JDK15OrLater.class)
++    public static String sunBootLibraryPath() {
++        /* Native images do not have a boot lib path. */
++        return null;
++    }
++
++    @Substitute
++    @TargetElement(onlyWith = JDK15OrLater.class)
++    public static String javaLibraryPath() {
++        /* Native images do not have a java lib path. */
++        return null;
++    }
++
+     @Substitute
+     private static String javaHome() {
+         /* Native images do not have a Java home directory. */
+diff --git a/substratevm/src/com.oracle.svm.core.jdk15/src/com/oracle/svm/core/jdk15/Target_java_lang_ClassLoader_JDK15OrLater.java b/substratevm/src/com.oracle.svm.core.jdk15/src/com/oracle/svm/core/jdk15/Target_java_lang_ClassLoader_JDK15OrLater.java
+new file mode 100644
+index 00000000000..e756733681f
+--- /dev/null
++++ b/substratevm/src/com.oracle.svm.core.jdk15/src/com/oracle/svm/core/jdk15/Target_java_lang_ClassLoader_JDK15OrLater.java
+@@ -0,0 +1,309 @@
++/*
++ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.  Oracle designates this
++ * particular file as subject to the "Classpath" exception as provided
++ * by Oracle in the LICENSE file that accompanied this code.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ */
++package com.oracle.svm.core.jdk15;
++
++import java.io.ByteArrayInputStream;
++import java.io.File;
++import java.io.IOException;
++import java.io.InputStream;
++import java.net.URL;
++import java.security.ProtectionDomain;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Enumeration;
++import java.util.List;
++import java.util.Vector;
++import java.util.concurrent.ConcurrentHashMap;
++
++import com.oracle.svm.core.annotate.Alias;
++import com.oracle.svm.core.annotate.Delete;
++import com.oracle.svm.core.annotate.RecomputeFieldValue;
++import com.oracle.svm.core.annotate.RecomputeFieldValue.Kind;
++import com.oracle.svm.core.annotate.Substitute;
++import com.oracle.svm.core.annotate.TargetClass;
++import com.oracle.svm.core.annotate.TargetElement;
++import com.oracle.svm.core.hub.ClassForNameSupport;
++import com.oracle.svm.core.hub.DynamicHub;
++import com.oracle.svm.core.jdk.JDK11OrLater;
++import com.oracle.svm.core.jdk.JDK15OrLater;
++import com.oracle.svm.core.jdk.NativeLibrarySupport;
++import com.oracle.svm.core.jdk.Resources;
++import com.oracle.svm.core.jdk.Target_java_lang_AssertionStatusDirectives;
++import com.oracle.svm.core.jdk.Target_java_lang_Module;
++import com.oracle.svm.core.util.VMError;
++
++@TargetClass(value = ClassLoader.class, onlyWith = JDK15OrLater.class)
++@SuppressWarnings("static-method")
++final class Target_java_lang_ClassLoader_JDK15OrLater {
++
++    /**
++     * This field can be safely deleted, but that would require substituting the entire constructor
++     * of ClassLoader, so we just reset it. The original javadoc mentions: "The classes loaded by
++     * this class loader. The only purpose of this table is to keep the classes from being GC'ed
++     * until the loader is GC'ed". This field is only accessed by ClassLoader.addClass() which is "
++     * invoked by the VM to record every loaded class with this loader".
++     */
++    @Alias @RecomputeFieldValue(kind = Kind.Reset)//
++    private Vector<Class<?>> classes;
++
++    /**
++     * Reset ClassLoader.packages; accessing packages via ClassLoader is currently not supported and
++     * the SystemClassLoader may capture some hosted packages.
++     */
++    @Alias @RecomputeFieldValue(kind = Kind.NewInstance, declClass = ConcurrentHashMap.class)//
++    @TargetElement(name = "packages", onlyWith = JDK11OrLater.class)//
++    private ConcurrentHashMap<String, Package> packagesJDK11;
++
++    @Alias //
++    private static ClassLoader scl;
++
++    @Substitute
++    public static ClassLoader getSystemClassLoader() {
++        VMError.guarantee(scl != null);
++        return scl;
++    }
++
++    @Delete
++    private static native void initSystemClassLoader();
++
++    @Substitute
++    private URL getResource(String name) {
++        return getSystemResource(name);
++    }
++
++    @Substitute
++    private InputStream getResourceAsStream(String name) {
++        return getSystemResourceAsStream(name);
++    }
++
++    @Substitute
++    private Enumeration<URL> getResources(String name) {
++        return getSystemResources(name);
++    }
++
++    @Substitute
++    private static URL getSystemResource(String name) {
++        List<byte[]> arr = Resources.get(name);
++        return arr == null ? null : Resources.createURL(name, arr.get(0));
++    }
++
++    @Substitute
++    private static InputStream getSystemResourceAsStream(String name) {
++        List<byte[]> arr = Resources.get(name);
++        return arr == null ? null : new ByteArrayInputStream(arr.get(0));
++    }
++
++    @Substitute
++    private static Enumeration<URL> getSystemResources(String name) {
++        List<byte[]> arr = Resources.get(name);
++        if (arr == null) {
++            return Collections.emptyEnumeration();
++        }
++        List<URL> res = new ArrayList<>(arr.size());
++        for (byte[] data : arr) {
++            res.add(Resources.createURL(name, data));
++        }
++        return Collections.enumeration(res);
++    }
++
++    @Substitute
++    @SuppressWarnings("unused")
++    static Target_jdk_internal_loader_NativeLibrary loadLibrary(Class<?> fromClass, String name) {
++        NativeLibrarySupport.singleton().loadLibrary(name, false);
++        return null;
++    }
++
++    @Substitute
++    @SuppressWarnings("unused")
++    static Target_jdk_internal_loader_NativeLibrary loadLibrary(Class<?> fromClass, File file) {
++        NativeLibrarySupport.singleton().loadLibrary(file);
++        return null;
++    }
++
++    @Substitute
++    private Class<?> loadClass(String name) throws ClassNotFoundException {
++        return ClassForNameSupport.forName(name, false);
++    }
++
++    @Delete
++    native Class<?> loadClass(String name, boolean resolve);
++
++    @Delete
++    native Class<?> findBootstrapClassOrNull(String name);
++
++    @Substitute
++    @SuppressWarnings("unused")
++    static void checkClassLoaderPermission(ClassLoader cl, Class<?> caller) {
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    @SuppressWarnings({"unused"})
++    Class<?> loadClass(Target_java_lang_Module module, String name) {
++        return ClassForNameSupport.forNameOrNull(name, false);
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    ConcurrentHashMap<?, ?> createOrGetClassLoaderValueMap() {
++        throw VMError.unsupportedFeature("JDK11OrLater: Target_java_lang_ClassLoader.createOrGetClassLoaderValueMap()");
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    @SuppressWarnings({"unused"})
++    private boolean trySetObjectField(String name, Object obj) {
++        throw VMError.unsupportedFeature("JDK11OrLater: Target_java_lang_ClassLoader.trySetObjectField(String name, Object obj)");
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    @SuppressWarnings({"unused"})
++    protected URL findResource(String moduleName, String name) throws IOException {
++        throw VMError.unsupportedFeature("JDK11OrLater: Target_java_lang_ClassLoader.findResource(String, String)");
++    }
++
++    @Substitute //
++    @SuppressWarnings({"unused"})
++    Object getClassLoadingLock(String className) {
++        throw VMError.unsupportedFeature("Target_java_lang_ClassLoader.getClassLoadingLock(String)");
++    }
++
++    @Substitute //
++    @SuppressWarnings({"unused"}) //
++    private Class<?> findLoadedClass0(String name) {
++        /* See open/src/hotspot/share/prims/jvm.cpp#958. */
++        throw VMError.unsupportedFeature("Target_java_lang_ClassLoader.findLoadedClass0(String)");
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    @SuppressWarnings({"unused"})
++    protected Class<?> findClass(String moduleName, String name) {
++        throw VMError.unsupportedFeature("JDK11OrLater: Target_java_lang_ClassLoader.findClass(String moduleName, String name)");
++    }
++
++    @Substitute //
++    @TargetElement(onlyWith = JDK11OrLater.class) //
++    @SuppressWarnings({"unused"})
++    public Package getDefinedPackage(String name) {
++        throw VMError.unsupportedFeature("JDK11OrLater: Target_java_lang_ClassLoader.getDefinedPackage(String name)");
++    }
++
++    @Substitute
++    @TargetElement(onlyWith = JDK11OrLater.class)
++    @SuppressWarnings({"unused"})
++    public Target_java_lang_Module getUnnamedModule() {
++        return DynamicHub.singleModuleReference.get();
++    }
++
++    /*
++     * The assertion status of classes is fixed at image build time because it is baked into the AOT
++     * compiled code. All methods that modify the assertion status are substituted to throw an
++     * error.
++     *
++     * Note that the assertion status can be queried at run time, see the relevant method in
++     * DynamicHub.
++     */
++
++    @Substitute
++    @SuppressWarnings({"unused"})
++    private void setDefaultAssertionStatus(boolean enabled) {
++        throw VMError.unsupportedFeature("The assertion status of classes is fixed at image build time.");
++    }
++
++    @Substitute
++    @SuppressWarnings({"unused"})
++    private void setPackageAssertionStatus(String packageName, boolean enabled) {
++        throw VMError.unsupportedFeature("The assertion status of classes is fixed at image build time.");
++    }
++
++    @Substitute
++    @SuppressWarnings({"unused"})
++    private void setClassAssertionStatus(String className, boolean enabled) {
++        throw VMError.unsupportedFeature("The assertion status of classes is fixed at image build time.");
++    }
++
++    @Substitute
++    @SuppressWarnings({"unused"})
++    private void clearAssertionStatus() {
++        throw VMError.unsupportedFeature("The assertion status of classes is fixed at image build time.");
++    }
++
++    /*
++     * We are defensive and also handle private native methods by marking them as deleted. If they
++     * are reachable, the user is certainly doing something wrong. But we do not want to fail with a
++     * linking error.
++     */
++
++    @Delete
++    private static native void registerNatives();
++
++    @Delete
++    @TargetElement(onlyWith = JDK11OrLater.class)
++    private static native Class<?> defineClass1(ClassLoader loader, String name, byte[] b, int off, int len, ProtectionDomain pd, String source);
++
++    @Delete
++    @TargetElement(onlyWith = JDK11OrLater.class)
++    private static native Class<?> defineClass2(ClassLoader loader, String name, java.nio.ByteBuffer b, int off, int len, ProtectionDomain pd, String source);
++
++    @Delete
++    private native Class<?> findBootstrapClass(String name);
++
++    @Delete
++    private static native Target_java_lang_AssertionStatusDirectives retrieveDirectives();
++}
++
++@TargetClass(className = "jdk.internal.loader.NativeLibraries", onlyWith = JDK15OrLater.class)
++final class Target_jdk_internal_loader_NativeLibraries {
++
++    @Substitute
++    @SuppressWarnings("static-method")
++    public Target_jdk_internal_loader_NativeLibrary loadLibrary(Class<?> fromClass, File file) {
++        NativeLibrarySupport.singleton().loadLibrary(file);
++        return null;
++    }
++
++    @Delete
++    private static native boolean load(Target_jdk_internal_loader_NativeLibraries_NativeLibraryImpl impl, String name, boolean isBuiltin, boolean isJNI);
++
++    @Delete
++    private static native void unload(String name, boolean isBuiltin, boolean isJNI, long handle);
++
++    @Delete
++    private static native String findBuiltinLib(String name);
++
++    @Delete
++    private static native long findEntry0(Target_jdk_internal_loader_NativeLibraries_NativeLibraryImpl lib, String name);
++}
++
++@TargetClass(className = "jdk.internal.loader.NativeLibrary", onlyWith = JDK15OrLater.class)
++@SuppressWarnings("unused")
++final class Target_jdk_internal_loader_NativeLibrary {
++}
++
++@TargetClass(className = "jdk.internal.loader.NativeLibraries", innerClass = "NativeLibraryImpl", onlyWith = JDK15OrLater.class)
++final class Target_jdk_internal_loader_NativeLibraries_NativeLibraryImpl {
++}
+\ No newline at end of file
+diff --git a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/JavaLangSubstitutions.java b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/JavaLangSubstitutions.java
+index 75755c7f6fd..1c64b37e89b 100644
+--- a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/JavaLangSubstitutions.java
++++ b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/JavaLangSubstitutions.java
+@@ -128,7 +128,7 @@ final class Target_java_lang_Object {
+     }
+ }
+ 
+-@TargetClass(className = "java.lang.ClassLoaderHelper")
++@TargetClass(className = "java.lang.ClassLoaderHelper", onlyWith = JDK14OrEarlier.class)
+ final class Target_java_lang_ClassLoaderHelper {
+     @Alias
+     static native File mapAlternativeName(File lib);
+diff --git a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/NativeLibrarySupport.java b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/NativeLibrarySupport.java
+index 17831f99dc5..76b6cf84775 100644
+--- a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/NativeLibrarySupport.java
++++ b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/NativeLibrarySupport.java
+@@ -32,6 +32,7 @@ import java.util.Deque;
+ import java.util.List;
+ import java.util.concurrent.locks.ReentrantLock;
+ 
++import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
+ import org.graalvm.nativeimage.ImageSingletons;
+ import org.graalvm.nativeimage.Platform.HOSTED_ONLY;
+ import org.graalvm.nativeimage.Platforms;
+@@ -123,7 +124,12 @@ public final class NativeLibrarySupport {
+             if (loadLibrary0(libpath, false)) {
+                 return;
+             }
+-            File altpath = Target_java_lang_ClassLoaderHelper.mapAlternativeName(libpath);
++            File altpath = null;
++            // JDK 15 maps the alternative name to null via
++            // jdk.internal.loader.ClassLoaderHelper
++            if (JavaVersionUtil.JAVA_SPEC < 15) {
++                altpath = Target_java_lang_ClassLoaderHelper.mapAlternativeName(libpath);
++            }
+             if (altpath != null && loadLibrary0(libpath, false)) {
+                 return;
+             }
+@@ -131,6 +137,16 @@ public final class NativeLibrarySupport {
+         throw new UnsatisfiedLinkError("no " + name + " in java.library.path");
+     }
+ 
++    public void loadLibrary(File file) {
++        if (loadLibrary0(file, false)) {
++            return;
++        }
++        if (loadLibrary0(file, true)) {
++            return;
++        }
++        throw new UnsatisfiedLinkError("no " + file + " in java.library.path");
++    }
++
+     private boolean loadLibrary0(File file, boolean asBuiltin) {
+         String canonical;
+         try {
+diff --git a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_AssertionStatusDirectives.java b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_AssertionStatusDirectives.java
+new file mode 100644
+index 00000000000..71673a4fa01
+--- /dev/null
++++ b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_AssertionStatusDirectives.java
+@@ -0,0 +1,7 @@
++package com.oracle.svm.core.jdk;
++
++import com.oracle.svm.core.annotate.TargetClass;
++
++@TargetClass(className = "java.lang.AssertionStatusDirectives") //
++public final class Target_java_lang_AssertionStatusDirectives {
++}
+\ No newline at end of file
+diff --git a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_ClassLoader.java b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_ClassLoader.java
+index 2d928a48ca1..7ea621a1d8b 100644
+--- a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_ClassLoader.java
++++ b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/jdk/Target_java_lang_ClassLoader.java
+@@ -141,7 +141,7 @@ final class Target_jdk_internal_loader_BuiltinClassLoader {
+     }
+ }
+ 
+-@TargetClass(ClassLoader.class)
++@TargetClass(value = ClassLoader.class, onlyWith = JDK14OrEarlier.class)
+ @SuppressWarnings("static-method")
+ final class Target_java_lang_ClassLoader {
+ 
+@@ -377,7 +377,7 @@ final class Target_java_lang_ClassLoader {
+     private static native Target_java_lang_AssertionStatusDirectives retrieveDirectives();
+ }
+ 
+-@TargetClass(value = ClassLoader.class, innerClass = "NativeLibrary")
++@TargetClass(value = ClassLoader.class, innerClass = "NativeLibrary", onlyWith = JDK14OrEarlier.class)
+ final class Target_java_lang_ClassLoader_NativeLibrary {
+ 
+     /*
+@@ -411,10 +411,6 @@ final class Target_java_lang_ClassLoader_NativeLibrary {
+     private static native void unload(String name, boolean isBuiltin, long handle);
+ }
+ 
+-@TargetClass(className = "java.lang.AssertionStatusDirectives") //
+-final class Target_java_lang_AssertionStatusDirectives {
+-}
+-
+ @TargetClass(className = "java.lang.NamedPackage", onlyWith = JDK11OrLater.class) //
+ final class Target_java_lang_NamedPackage {
+ }
+-- 
+2.21.1
+
