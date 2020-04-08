@@ -1,0 +1,53 @@
+From 876196cb5fbc081f5048ea5624c272049b2e087a Mon Sep 17 00:00:00 2001
+From: Severin Gehwolf <sgehwolf@redhat.com>
+Date: Wed, 8 Apr 2020 13:46:44 +0200
+Subject: [PATCH 2/3] Fix ambiguity of newFileSystem() calls
+
+---
+ .../oracle/svm/hosted/image/sources/ApplicationSourceCache.java | 2 +-
+ .../com/oracle/svm/hosted/image/sources/GraalVMSourceCache.java | 2 +-
+ .../src/com/oracle/svm/hosted/image/sources/JDKSourceCache.java | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/ApplicationSourceCache.java b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/ApplicationSourceCache.java
+index 83cda2b0b38..1d32eec08f8 100644
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/ApplicationSourceCache.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/ApplicationSourceCache.java
+@@ -82,7 +82,7 @@ public class ApplicationSourceCache extends SourceCache {
+                 sourcePath = sourcePath.getParent().resolve(fileNameString);
+                 if (sourcePath.toFile().exists()) {
+                     try {
+-                        FileSystem fileSystem = FileSystems.newFileSystem(sourcePath, null);
++                        FileSystem fileSystem = FileSystems.newFileSystem(sourcePath, (ClassLoader)null);
+                         for (Path root : fileSystem.getRootDirectories()) {
+                             srcRoots.add(root);
+                         }
+diff --git a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/GraalVMSourceCache.java b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/GraalVMSourceCache.java
+index c583a300dbb..f44e70128f5 100644
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/GraalVMSourceCache.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/GraalVMSourceCache.java
+@@ -83,7 +83,7 @@ public class GraalVMSourceCache extends SourceCache {
+                 Path srcPath = sourcePath.getParent().resolve(fileNameString);
+                 if (srcPath.toFile().exists()) {
+                     try {
+-                        FileSystem fileSystem = FileSystems.newFileSystem(srcPath, null);
++                        FileSystem fileSystem = FileSystems.newFileSystem(srcPath, (ClassLoader)null);
+                         for (Path root : fileSystem.getRootDirectories()) {
+                             if (filterSrcRoot(root)) {
+                                 srcRoots.add(root);
+diff --git a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/JDKSourceCache.java b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/JDKSourceCache.java
+index 4bc3bd20889..21b7ab6d037 100644
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/JDKSourceCache.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/sources/JDKSourceCache.java
+@@ -68,7 +68,7 @@ public class JDKSourceCache extends SourceCache {
+         }
+         if (srcZipPath.toFile().exists()) {
+             try {
+-                FileSystem srcFileSystem = FileSystems.newFileSystem(srcZipPath, null);
++                FileSystem srcFileSystem = FileSystems.newFileSystem(srcZipPath, (ClassLoader)null);
+                 for (Path root : srcFileSystem.getRootDirectories()) {
+                     srcRoots.add(root);
+                 }
+-- 
+2.21.1
+
