@@ -1,7 +1,7 @@
-From 99df95c36c961297364184e99cc83436e89eb5a0 Mon Sep 17 00:00:00 2001
+From 8a0284dd93098ac1266c97dbcc896d780eee26f2 Mon Sep 17 00:00:00 2001
 From: Severin Gehwolf <sgehwolf@redhat.com>
 Date: Thu, 6 Feb 2020 11:39:52 +0100
-Subject: [PATCH 3/3] Add placeholder for VM vendor version
+Subject: [PATCH] Add placeholder for VM vendor version
 
 ---
  sdk/mx.sdk/mx_sdk_vm_impl.py | 2 +-
