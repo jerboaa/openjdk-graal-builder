@@ -19,13 +19,8 @@
 # subsequently using the just produced builder image.
 set -e
 
-BOOT_JDK_VERSION="14"
-ARCHITECTURE="x64"
-
-cloneOpenJDK() {
-  target_dir="$1"
-  git clone --depth 1 https://github.com/AdoptOpenJDK/openjdk-jdk.git $target_dir
-}
+BUILDER_JDK_IMAGE="$1"
+BUILDER_JDK_STATIC_LIBS_IMAGE="$2"
 
 cloneGraalCE() {
   target_dir="$1"
@@ -36,29 +31,6 @@ cloneGraalCE() {
   git clone --depth 1 https://github.com/graalvm/mx.git $mx_dir
 }
 
-buildOpenJDK() {
-  buildScript="$1"
-  bootDir=$(basename $JDK_BOOT_DIR)
-  baseDir=$(dirname $JDK_BOOT_DIR)
-  if [ ! -e $JDK_BOOT_DIR ]; then
-    mkdir -p $JDK_BOOT_DIR
-    apiURL="https://api.adoptopenjdk.net/v3/binary/latest/${BOOT_JDK_VERSION}/ea/linux/${ARCHITECTURE}/jdk/hotspot/normal/adoptopenjdk"
-    pushd $baseDir > /dev/null
-      wget -q -O - "${apiURL}" | tar xpzf - --strip-components=1 -C "$bootDir"
-    popd > /dev/null
-  fi
-  pushd $OPENJDK_SRC > /dev/null
-    bash $buildScript
-  popd > /dev/null
-}
-
-patchGraalCESources() {
-  patches_dir=$1
-  pushd $GRAAL_CE_SRC > /dev/null
-    git am $patches_dir/*.patch
-  popd > /dev/null
-}
-
 buildSubstrate() {
   buildScript="$1"
   pushd $GRAAL_CE_SRC > /dev/null
@@ -66,21 +38,28 @@ buildSubstrate() {
   popd > /dev/null
 }
 
-rm -rf "$(pwd)/src"
+sanityCheck() {
+  if [ ! -e "$BUILDER_JDK_IMAGE" ]; then
+    echo "Error: Builder JDK tarball not found: $BUILDER_JDK_IMAGE"
+    exit 1
+  fi
+  if [ ! -e "$BUILDER_JDK_STATIC_LIBS_IMAGE" ]; then
+    echo "Error: Builder JDK static libs tarball not found: $BUILDER_JDK_STATIC_LIBS_IMAGE"
+    exit 1
+  fi
+}
+
+sanityCheck
 RESULTS_BASE_DIR="$(pwd)/results"
 rm -rf "$RESULTS_BASE_DIR"
-OPENJDK_SRC="$(pwd)/src/openjdk"
-cloneOpenJDK "$OPENJDK_SRC"
-export RESULT_DIR="$RESULTS_BASE_DIR/openjdk"
-export JDK_BOOT_DIR="$(pwd)/jdk-$BOOT_JDK_VERSION"
-buildOpenJDK "$(pwd)/openjdk/linux/x86_64/build-builder-jdk.sh"
 
-BUILDER_IMAGE="$(ls $RESULT_DIR/*.tar.gz)"
 rm -rf $(pwd)/graal-builder
 mkdir -p $(pwd)/graal-builder
 pushd $(pwd)/graal-builder > /dev/null
-  tar -xf $BUILDER_IMAGE
+  tar -xf $BUILDER_JDK_IMAGE
+  tar -xf $BUILDER_JDK_STATIC_LIBS_IMAGE
   OPENJDK_GRAAL_BUILDER="$(pwd)/$(ls -d *)"
+  echo "JDK 11.0.8 graal builder image in: $OPENJDK_GRAAL_BUILDER"
 popd > /dev/null
 export OPENJDK_GRAAL_BUILDER
 export RESULT_DIR="$RESULTS_BASE_DIR/substrate"
@@ -89,9 +68,7 @@ GRAAL_BASE="$(pwd)/src/graal"
 cloneGraalCE "$(pwd)/src/graal"
 export MX_BIN="$GRAAL_BASE/mx/mx"
 GRAAL_CE_SRC="$GRAAL_BASE/graal-ce"
-patchGraalCESources "$(pwd)/graal-ce/adopt-openjdk-patches"
 
-export VENDOR_NAME="GaoVM"
 buildSubstrate "$(pwd)/graal-ce/linux/x86_64/build-svm.sh"
 
 echo "Results in: "

@@ -15,9 +15,9 @@
 
 set -e
 
-VENDOR_NAME="${VENDOR_NAME:-"GraalVM LIBGRAAL"}"
 NAME="svm"
 FINAL_NAME="svm.tar.gz"
+NATIVE_LAUNCHER="false"
 
 prepare() {
   if [ "${OPENJDK_GRAAL_BUILDER}_" == "_" ]; then
@@ -45,10 +45,15 @@ prepare() {
   popd > /dev/null
 }
 
+native_image_build_args_extra() {
+  NATIVE_IMAGE_BUILD_EXTRA=""
+  if [ "${NATIVE_LAUNCHER}_" == "true_" ]; then
+    NATIVE_IMAGE_BUILD_EXTRA=" --native-images=native-image"
+  fi
+  echo "${NATIVE_IMAGE_BUILD_EXTRA}"
+}
+
 build() {
-  # Adjust Vendor Version
-  echo "Setting vendor version to: $VENDOR_NAME"
-  sed -i "s/__VENDOR_VERSION__/$VENDOR_NAME/g" sdk/mx.sdk/mx_sdk_vm_impl.py
   pushd substratevm > /dev/null
   cat > HelloWorld.java <<EOF
   public class HelloWorld {
@@ -60,14 +65,20 @@ EOF
   JAVAC="${OPENJDK_GRAAL_BUILDER}/bin/javac"
   $JAVAC HelloWorld.java
   helloworld_image="testme-helloworld"
-  $MX native-image -H:+ReportExceptionStackTraces HelloWorld $helloworld_image 2>&1 | tee svmbuild.log
+  EXTRA_ARGS="$(native_image_build_args_extra)"
+  $MX --components="Native Image" $EXTRA_ARGS build 2>&1 | tee svmbuild.log
+  SUBSTRATE_HOME=$($MX --components="Native Image" $EXTRA_ARGS graalvm-home)
+  ${SUBSTRATE_HOME}/bin/native-image -H:+ReportExceptionStackTraces HelloWorld $helloworld_image 2>&1 | tee -a svmbuild.log
   ./$helloworld_image | sed 's/^/Native image >>  /g'
-  rm -rf testme-helloworld
+  rm -rf ./$helloworld_image
   popd > /dev/null
 }
 
 archive() {
-  OUTPUT=$(readlink -f substratevm/svmbuild/vm)
+  pushd substratevm
+  EXTRA_ARGS="$(native_image_build_args_extra)"
+  OUTPUT=$($MX --components="Native Image" $EXTRA_ARGS graalvm-home)
+  popd
   OUTPUT_DIR=$(dirname $OUTPUT)
   OUTPUT_BASE=$(basename $OUTPUT)
   pushd $OUTPUT_DIR > /dev/null
@@ -113,6 +124,7 @@ EOF
   echo "Native image capable JDK image at: $result"
 }
 
+echo "Build config: --components=\"Native Image\" \"$(native_image_build_args_extra)\""
 prepare
 build
 archive
