@@ -19,15 +19,20 @@
 # subsequently using the just produced builder image.
 set -e
 
-BUILDER_JDK_IMAGE="$1"
-BUILDER_JDK_STATIC_LIBS_IMAGE="$2"
+GRAAL_REPO="$1"
+GRAAL_BRANCH="$2"
+BUILDER_JDK_IMAGE="$3"
+BUILDER_JDK_STATIC_LIBS_IMAGE="$4"
+
+GRAAL_REPO_DEFAULT=https://github.com/oracle/graal.git
+GRAAL_BRANCH_DEFAULT=master
 
 cloneGraalCE() {
   target_dir="$1"
   graal_dir="$target_dir/graal-ce"
   mx_dir="$target_dir/mx"
   mkdir -p $target_dir
-  git clone --depth 1 https://github.com/oracle/graal.git $graal_dir
+  git clone -b "${GRAAL_BRANCH}" --single-branch "${GRAAL_REPO}" "$graal_dir"
   git clone --depth 1 https://github.com/graalvm/mx.git $mx_dir
 }
 
@@ -48,6 +53,14 @@ downloadJDKandSanityCheck() {
     popd
     BUILDER_JDK_IMAGE="$TEMP_DIR/jdk-11.0.8-ea.tar.gz"
     BUILDER_JDK_STATIC_LIBS_IMAGE="$TEMP_DIR/static-libs-11.0.8-ea.tar.gz"
+  fi
+  if [ -z "${GRAAL_REPO}" ]; then
+    echo "GRAAL_REPO not set, using default: $GRAAL_REPO_DEFAULT"
+    GRAAL_REPO="${GRAAL_REPO_DEFAULT}"
+  fi
+  if [ -z "${GRAAL_BRANCH}" ]; then
+    echo "GRAAL_BRANCH not set, using default: $GRAAL_BRANCH_DEFAULT"
+    GRAAL_BRANCH="${GRAAL_BRANCH_DEFAULT}"
   fi
   if [ ! -e "$BUILDER_JDK_IMAGE" ]; then
     echo "Error: Builder JDK tarball not found: $BUILDER_JDK_IMAGE"
