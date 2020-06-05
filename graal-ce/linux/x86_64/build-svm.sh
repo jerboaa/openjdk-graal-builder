@@ -15,8 +15,8 @@
 
 set -e
 
-NAME="svm"
-FINAL_NAME="svm.tar.gz"
+NAME="mandrel"
+FINAL_NAME="mandrel.tar.gz"
 NATIVE_LAUNCHER="false"
 
 prepare() {
@@ -77,32 +77,40 @@ EOF
 archive() {
   pushd substratevm
   EXTRA_ARGS="$(native_image_build_args_extra)"
-  OUTPUT=$($MX --components="Native Image" $EXTRA_ARGS graalvm-home)
+  GRAALVM_HOME=$($MX --components="Native Image" $EXTRA_ARGS graalvm-home)
   popd
-  OUTPUT_DIR=$(dirname $OUTPUT)
-  OUTPUT_BASE=$(basename $OUTPUT)
-  pushd $OUTPUT_DIR > /dev/null
-    mv $OUTPUT_BASE $NAME
-    tar -c -f $NAME.tar --dereference $NAME
+  mkdir -p mandrel-bundle-tmp
+  MANDREL_BUILD=mandrel-bundle-tmp/mandrel-build
+  cp -r ${OPENJDK_GRAAL_BUILDER} ${MANDREL_BUILD}
+  # Copy svm bits and graalvm bits into the OpenJDK tree
+  cp -r ${GRAALVM_HOME}/lib/svm ${MANDREL_BUILD}/lib
+  cp -r ${GRAALVM_HOME}/lib/graalvm ${MANDREL_BUILD}/lib
+  cp ${GRAALVM_HOME}/release ${MANDREL_BUILD}
+  cp ${GRAALVM_HOME}/LICENSE_NATIVEIMAGE.txt ${MANDREL_BUILD}
+  cp -r ${GRAALVM_HOME}/lib/truffle ${MANDREL_BUILD}/lib
+  mkdir -p ${MANDREL_BUILD}/lib/jvmci
+  COMPILER_JAR="compiler/mxbuild/dists/jdk11/graal.jar compiler/mxbuild/dists/jdk11/graal.src.zip"
+  cp $COMPILER_JAR ${MANDREL_BUILD}/lib/jvmci
+  GRAAL_SDK_JAR="sdk/mxbuild/dists/jdk11/graal-sdk.jar sdk/mxbuild/dists/jdk11/graal-sdk.src.zip"
+  cp $GRAAL_SDK_JAR ${MANDREL_BUILD}/lib/jvmci
+  pushd ${MANDREL_BUILD}/bin
+  ln -s ../lib/svm/bin/native-image native-image
+  popd
+  # Get GRAALVM_VERSION from release file
+  eval $(grep GRAALVM_VERSION ${MANDREL_BUILD}/release)
+  echo "Setting GRAALVM_VERSION to '$GRAALVM_VERSION'"
+  # Fix up native-image so as to be able to upgrade the module path
+  pushd ${MANDREL_BUILD}/lib/svm/bin
+  sed -i -e "s|EnableJVMCI|EnableJVMCI -Dorg.graalvm.version=${GRAALVM_VERSION} --upgrade-module-path \${location}/../../jvmci/graal.jar --add-modules \"org.graalvm.truffle,org.graalvm.sdk\" --module-path \${location}/../../truffle/truffle-api.jar:\${location}/../../jvmci/graal-sdk.jar|" native-image
+  popd
+  pushd mandrel-bundle-tmp > /dev/null
+    mv mandrel-build $NAME
+    tar -c -f $NAME.tar $NAME
     gzip $NAME.tar
-    orig_file=$(pwd)/$FINAL_NAME
-    # work around symlink-mess in distro
-    mkdir tmp-svm
-    pushd tmp-svm > /dev/null
-      tar -xf $orig_file
-      pushd $NAME/bin > /dev/null
-        rm native-image
-        ln -s ../lib/svm/bin/native-image native-image
-      popd > /dev/null
-      rm $orig_file
-      tar -c -f $NAME.tar $NAME
-      gzip $NAME.tar
-      if [ ! -e $RESULT_DIR ]; then
-        mkdir -p $RESULT_DIR
-      fi
-      mv $FINAL_NAME $RESULT_DIR/
-    popd > /dev/null
-    rm -rf tmp-svm
+    if [ ! -e $RESULT_DIR ]; then
+      mkdir -p $RESULT_DIR
+    fi
+    mv $FINAL_NAME $RESULT_DIR/
     # Test native image functionality from archive
     mkdir tmp-test-native
     pushd tmp-test-native > /dev/null

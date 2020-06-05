@@ -85,7 +85,7 @@ pushd $(pwd)/graal-builder > /dev/null
   echo "JDK 11 graal builder image in: $OPENJDK_GRAAL_BUILDER"
 popd > /dev/null
 export OPENJDK_GRAAL_BUILDER
-export RESULT_DIR="$RESULTS_BASE_DIR/substrate"
+export RESULT_DIR="$RESULTS_BASE_DIR/graalvm-mandrel"
 
 GRAAL_BASE="$(pwd)/src/graal"
 cloneGraalCE "$(pwd)/src/graal"
